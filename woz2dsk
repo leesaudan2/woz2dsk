@@ -8,6 +8,7 @@ no warnings qw( experimental::smartmatch );
 use IO::File;
 use File::Slurp qw(slurp);
 use Digest::CRC qw(crc32);
+use Getopt::Long::Descriptive;
 
 use constant {
               TRACKS_PER_DISK => 35,
@@ -43,8 +44,19 @@ use constant sectors_phy2log => [map {hex} split(//, "07E6D5C4B3A2918F")];
 use constant WOZ_BLOCK_SIZE => 512;
 
 
-die "Usage: $0 in.woz out.dsk\n"
-  unless @ARGV == 2;
+my ($opt, $usage) = describe_options
+ (
+  q{%c %o <some-arg>
+
+Options:},
+  [ 'quiet|q',    "suppress normal messages" ],
+  [ 'debug|d',    "show debug messages" ],
+  [ 'help|h',     "print usage message and exit", { shortcircuit => 1 } ],
+ );
+
+
+die $usage->text
+  if $opt->help || @ARGV != 2;
 
 my ($in_file, $out_file) = @ARGV;
 
@@ -55,8 +67,10 @@ die "$out_file: cannot write\n"
   unless !-e $out_file || -w $out_file;
 
 
-sub debug {}
-#sub debug { print STDERR @_ }
+sub debug {
+  return unless $opt->debug;
+  print STDERR @_
+}
 
 
 my $woz_buffer = slurp($in_file);
@@ -100,7 +114,8 @@ while ($woz_unpack_pos < $woz_size) {
         $disk_type == 2? "3.5\"" :
         "unknown";
       debug "INFO: ver $version, type $disk_type_string, creator: $creator\n";
-      print "WOZ file version $version\n";
+      print "WOZ file version $version\n"
+        unless $opt->quiet;
 
       die "$in_file: only 5.25\" disks are supported\n"
         unless $disk_type == 1;
@@ -147,7 +162,8 @@ while ($woz_unpack_pos < $woz_size) {
       for my $e (@entries) {
         my ($key, @value) = split("\t", $e);
         my $value = join("\t", @value);
-        print "  $key => $value\n";
+        print "  $key => $value\n"
+          unless $opt->quiet;
       }
     }
 
@@ -320,7 +336,8 @@ $out_fh->close || die "$out_file: $!\n";
 warn "$in_file: no sectors found!\n"
   unless $sector_count;
 
-print "written $out_sector_count/$sector_count sectors\n";
+print "written $out_sector_count/$sector_count sectors\n"
+  unless $opt->quiet;
 
 
 #end
