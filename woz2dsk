@@ -13,7 +13,8 @@ use Getopt::Long::Descriptive;
 use constant {
               TRACKS_PER_DISK => 35,
               SECTORS_PER_TRACK => 16,
-              BYTES_PER_SECTOR => 256
+              BYTES_PER_SECTOR => 256,
+              NIBBLES_PER_TRACK => 6656,
              };
 
 use constant decode_6x2 => [
@@ -51,7 +52,8 @@ my ($opt, $usage) = describe_options
   q{%c %o <some-arg>
 
 Options:},
-  [ 'format|f=s', "output format {auto|DOS|ProDOS}", { default  => 'auto' } ],
+  [ 'format|f=s', "output format {auto|DOS|ProDOS|nibble}",
+                  { default  => 'auto' } ],
   [],
   [ 'quiet|q',    "suppress output messages" ],
   [ 'debug|d',    "show debug messages" ],
@@ -78,15 +80,25 @@ sub debug {
 
 my $format = $opt->format;
 if ($format eq 'auto') {
-  my ($ext) = $out_file =~ m{\.([^.])[^.]*$};
-  $format = (defined($ext) && lc($ext) eq 'p')? 'ProDOS' : 'DOS';
+  my ($ext) = $out_file =~ m{\.([^.]*)$};
+
+  if (defined($ext)) {
+    if ($ext =~ /^nib/i) {
+      $format = 'nibble';
+    } else {
+      $format = ($ext =~ /^p/i)? 'ProDOS' : 'DOS';
+    }
+  } else {
+    $format = 'DOS';
+  }
+
   print "using $format-ordered logical sectors for output\n"
     unless $opt->quiet;
 }
 
 my $sectors_phy2log = SECTORS_PHY2LOG->{$format};
 die "unknown format: $format\n"
-  unless defined $sectors_phy2log;
+  unless defined $sectors_phy2log || $format eq 'nibble';
 
 
 my $woz_buffer = slurp($in_file);
@@ -196,11 +208,15 @@ die "$in_file: TMAP chunk not found\n"
 die "$in_file: TRKS chunk not found\n"
   unless @trks;
 
+
 my $out_fh = IO::File->new($out_file, "w") || die "$out_file: $!\n";
 my $sector_count = 0;
 my $out_sector_count = 0;
-$out_fh->truncate(TRACKS_PER_DISK * SECTORS_PER_TRACK * BYTES_PER_SECTOR)
-      || die "$out_file: $!\n";
+
+unless ($format eq 'nibble') {
+  $out_fh->truncate(TRACKS_PER_DISK * SECTORS_PER_TRACK * BYTES_PER_SECTOR)
+    || die "$out_file: $!\n";
+}
 
 
 track: for my $track (0..(TRACKS_PER_DISK-1)) {
@@ -256,6 +272,24 @@ track: for my $track (0..(TRACKS_PER_DISK-1)) {
     $nibbles = join('', @nibbles);
   }
 
+
+  if ($format eq 'nibble') {
+    debug "T[$t_hex]: ". length($nibbles) ." nibbles ";
+    if (length($nibbles) < NIBBLES_PER_TRACK) {
+      $nibbles .= "\0" x (NIBBLES_PER_TRACK - length($nibbles));
+      debug "padded to ". length($nibbles) ." nibbles\n";
+    } elsif (length($nibbles) > NIBBLES_PER_TRACK) {
+      $nibbles = substr($nibbles, 0, NIBBLES_PER_TRACK);
+      debug "truncated to ". length($nibbles) ." nibbles\n";
+    } else {
+      debug "(just made!)\n";
+    }
+
+    $out_fh->write($nibbles, NIBBLES_PER_TRACK);
+    next track;
+  }
+
+  ### DOS or ProDOS format...
 
   sub decode4x4 {
     my $a = (shift() << 1) | 0x1;
@@ -349,11 +383,13 @@ track: for my $track (0..(TRACKS_PER_DISK-1)) {
 
 $out_fh->close || die "$out_file: $!\n";
 
-warn "$in_file: no sectors found!\n"
-  unless $sector_count;
+unless ($format eq 'nibble') {
+  warn "$in_file: no sectors found!\n"
+    unless $sector_count;
 
-print "written $out_sector_count/$sector_count sectors\n"
-  unless $opt->quiet;
+  print "written $out_sector_count/$sector_count sectors\n"
+    unless $opt->quiet;
+}
 
 
 #end
