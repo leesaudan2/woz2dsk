@@ -1,0 +1,326 @@
+#!/usr/bin/perl
+
+use v5.14;
+use strict;
+use warnings;
+no warnings qw( experimental::smartmatch );
+
+use IO::File;
+use File::Slurp qw(slurp);
+use Digest::CRC qw(crc32);
+
+use constant {
+              TRACKS_PER_DISK => 35,
+              SECTORS_PER_TRACK => 16,
+              BYTES_PER_SECTOR => 256
+             };
+
+use constant decode_6x2 => [
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, # <= 0x80
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x01, # <= 0x90
+  0xff, 0xff, 0x02, 0x03, 0xff, 0x04, 0x05, 0x06,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x08, # <= 0xa0
+  0xff, 0xff, 0xff, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+  0xff, 0xff, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, # <= 0xb0
+  0xff, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, # <= 0xc0
+  0xff, 0xff, 0xff, 0x1b, 0xff, 0x1c, 0x1d, 0x1e,
+  0xff, 0xff, 0xff, 0x1f, 0xff, 0xff, 0x20, 0x21, # <= 0xd0
+  0xff, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0x29, 0x2a, 0x2b, # <= 0xe0
+  0xff, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32,
+  0xff, 0xff, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, # <= 0xf0
+  0xff, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f ];
+
+my $address_prologue = "\xD5\xAA\x96";
+my $data_prologue = "\xD5\xAA\xAD";
+
+# see: http://www.applelogic.org/TheAppleIIEGettingStarted.html
+use constant sectors_phy2log => [map {hex} split(//, "07E6D5C4B3A2918F")];
+
+
+use constant WOZ_BLOCK_SIZE => 512;
+
+
+die "Usage: $0 in.woz out.dsk\n"
+  unless @ARGV == 2;
+
+my ($in_file, $out_file) = @ARGV;
+
+die "$in_file: cannot read\n"
+  unless -r $in_file;
+
+die "$out_file: cannot write\n"
+  unless !-e $out_file || -w $out_file;
+
+
+sub debug {}
+#sub debug { print STDERR @_ }
+
+
+my $woz_buffer = slurp($in_file);
+my $woz_size = length($woz_buffer);
+my $woz_unpack_pos = 0;
+
+my ($magic, $fixed, $crc32) =
+  unpack("a4 a4 L<", substr($woz_buffer, $woz_unpack_pos));
+$woz_unpack_pos += 12;
+
+die "$in_file: WOZ2 header not found\n"
+  unless $magic eq "WOZ2";
+die "$in_file: bad header\n"
+  unless $fixed eq "\xFF\x0A\x0D\x0A";
+
+my $computed_crc32 = crc32(substr($woz_buffer, $woz_unpack_pos));
+die sprintf("$in_file: CRC mismatch (stored=%08x; computed=%08x)\n",
+            $crc32, $computed_crc32)
+unless $crc32 == $computed_crc32;
+
+
+my $info;
+my @tmap;
+my @trks;
+while ($woz_unpack_pos < $woz_size) {
+  my ($chunk_id, $chunk_size) =
+    unpack("a4 L<", substr($woz_buffer, $woz_unpack_pos));
+  my $chunk_data = substr($woz_buffer, 8+$woz_unpack_pos, $chunk_size);
+  $woz_unpack_pos += 8+$chunk_size;
+
+  for ($chunk_id) {
+    when ('INFO') {
+      die "$in_file: INFO chunk size is not 60 (but $chunk_size) bytes\n"
+        unless $chunk_size == 60;
+      $info = 1;
+
+      my ($version, $disk_type, $_wp, $_sync, $_cleaned, $creator, $d2) =
+        unpack("CCCCC a32 a*", $chunk_data);
+      my $disk_type_string =
+        $disk_type == 1? "5.25\"" :
+        $disk_type == 2? "3.5\"" :
+        "unknown";
+      debug "INFO: ver $version, type $disk_type_string, creator: $creator\n";
+      print "WOZ file version $version\n";
+
+      die "$in_file: only 5.25\" disks are supported\n"
+        unless $disk_type == 1;
+
+      if ($version >= 2) {
+        my ($disk_sides, $_bsf, $_obt, $_ch, $_rR, $_lt) =
+          unpack("CCC S< S< S<", $d2);
+        debug "    sides: $disk_sides\n";
+
+        die "$in_file: only 1-sided images are supported\n"
+          unless $disk_sides == 1;
+      }
+    }
+
+    when ('TMAP') {
+      die "$in_file: TMP chunk size is not 160 (but $chunk_size) bytes\n"
+        unless $chunk_size == 160;
+
+      # we are only interested in integer-numbered tracks...
+      @tmap = unpack("C141", $chunk_data);
+      @tmap = @tmap[map { 4*$_ } 0..(TRACKS_PER_DISK-1)];
+
+      debug "TMAP: ", join(',', @tmap), "\n";
+    }
+
+    when ('TRKS') {
+      debug "TRKS: $chunk_size bytes\n";
+      @trks = unpack("(a8)160", $chunk_data);
+      map { $_ = [ unpack("S< S< L<", $_) ] } @trks;
+
+      debug "  trks: ", join('/', map {
+          join(",", @$_)
+        } @trks), "\n";
+    }
+
+    when ('WRIT') {
+      debug "WRIT: $chunk_size bytes\n";
+      # ignore WRIT chunks
+    }
+
+    when ('META') {
+      debug "META: $chunk_size bytes\n";
+      my @entries = split("\n", $chunk_data);
+      for my $e (@entries) {
+        my ($key, @value) = split("\t", $e);
+        my $value = join("\t", @value);
+        print "  $key => $value\n";
+      }
+    }
+
+    default {
+      warn "ignoring unknown chunk: id=$chunk_id; size=$chunk_size bytes\n";
+    }
+  }
+}
+
+die "$in_file: INFO chunk not found\n"
+  unless $info;
+die "$in_file: TMAP chunk not found\n"
+  unless @tmap;
+die "$in_file: TRKS chunk not found\n"
+  unless @trks;
+
+my $out_fh = IO::File->new($out_file, "w") || die "$out_file: $!\n";
+my $sector_count = 0;
+my $out_sector_count = 0;
+$out_fh->truncate(TRACKS_PER_DISK * SECTORS_PER_TRACK * BYTES_PER_SECTOR)
+      || die "$out_file: $!\n";
+
+
+track: for my $track (0..(TRACKS_PER_DISK-1)) {
+  my $t_hex = sprintf('$%02x', $track);
+  my $trk = $trks[$tmap[$track]];
+  my ($start_block, $block_count, $bit_count) = @$trk;
+
+  my $start = $start_block * WOZ_BLOCK_SIZE;
+  die "$in_file: start block offset ($start) of track $t_hex is beyond file size ($woz_size)\n"
+    unless $start < $woz_size;
+  my $length = $block_count * WOZ_BLOCK_SIZE;
+  die "$in_file: length ($length) of track $t_hex is extends beyond end of file\n"
+    unless $start + $length <= $woz_size;
+
+  $trk = substr($woz_buffer, $start, $length);
+  $trk = unpack("B$bit_count", $trk);
+  die "$in_file: track $t_hex has fewer bits of data (" . length($trk) . ") than specified ($bit_count)\n"
+    unless length($trk) >= $bit_count;
+
+  { # synchronize
+    my $sync_8 = "1111111100" x 8;
+    my ($a, $b) = $trk =~ m{^(.*?$sync_8)(.*)$}; # looking for sync bytes...
+
+    if (defined($a) && defined($b)) {
+      $trk = $b . $a; # rotate
+    } else { # maybe, it has been split when linearizing the circular track?
+      my $l = length($trk);
+      debug "rotate and retry by $l bits\n";
+      $trk = substr($trk, $l) . substr($trk, 0, $l);
+      my ($a2, $b2) = $trk =~ m{^(.*?$sync_8)(.*)$}; #try once more...
+
+      if (defined($a2) && defined($b2)) {
+        $trk = $b2 . $a2; # rotate
+      } else {
+        die "$in_file: track $t_hex has no sync bytes\n";
+      }
+    }
+  }
+
+  my $nibbles;
+  { # convert bits to "nibbles"
+    my @trk = split(//, $trk);
+    my @nibbles;
+    for(;;) {
+      while (@trk && $trk[0]=='0') {
+        shift @trk; # skip leading '0's
+      }
+
+      last unless @trk >= 8;
+      my @bits = splice(@trk, 0, 8);
+      push @nibbles, pack("B8", join('', @bits));
+    }
+    $nibbles = join('', @nibbles);
+  }
+
+
+  sub decode4x4 {
+    my $a = (shift() << 1) | 0x1;
+    my $b = shift();
+    $a & $b
+  }
+
+  my $track_sector_count = 0;
+ sector: for (;;) {
+    last unless $nibbles =~ s/^.*?$address_prologue(........)//;
+    my @addr_nibs = unpack("CCCCCCCC", $1);
+    my $volume = decode4x4(@addr_nibs[0..1]);
+    my $a_track = decode4x4(@addr_nibs[2..3]);
+    my $sector = decode4x4(@addr_nibs[4..5]);
+    my $checksum = decode4x4(@addr_nibs[6..7]);
+
+    my $calc_sum = $volume ^ $track ^ $sector;
+    my $s_hex = sprintf('$%x', $sector);
+
+    unless ($checksum == $calc_sum) {
+      warn sprintf("T[$t_hex]S[$s_hex]: address checksum mismatch (stored=%02x; computed=%02x)\n",
+                   $checksum, $calc_sum);
+      next sector;
+    }
+    unless ($a_track == $track) {
+      warn sprintf("T[$t_hex]S[$s_hex]: track mismatch (stored=%02x)\n",
+                   $a_track);
+      next sector;
+    }
+
+    debug "T[$t_hex]: $volume $track $sector\n";
+
+    unless ($nibbles =~ s/^...(.*?)$data_prologue//) {
+      warn sprintf("T[$t_hex]S[$s_hex]: missing data\n");
+      next sector;
+    }
+    if (length($1) > 200) { # too far away!
+      warn sprintf("T[$t_hex]S[$s_hex]: missing nearby data\n");
+      next sector;
+    }
+
+    my @sector_nibbles = unpack("C343", substr($nibbles, 0, 343));
+    $nibbles = substr($nibbles, 343);
+
+    map { $_ = decode_6x2->[$_ & 0x7F] } @sector_nibbles;
+    for my $i (1..342) {
+      $sector_nibbles[$i] ^= $sector_nibbles[$i - 1];
+    }
+    my $data_checksum = pop @sector_nibbles;
+    unless ($data_checksum == 0) {
+      warn sprintf("T[$t_hex]S[$s_hex]: bad data checksum\n");
+      next sector;
+    }
+
+    my @bytes;
+    for my $i (0..255) {
+      use constant bit_flip => [0, 2, 1, 3];
+      my $h6 = $sector_nibbles[86+$i];
+      my $l2 = bit_flip->[($sector_nibbles[$i%86] >> (int($i/86) * 2)) & 0x3];
+      push @bytes, $h6<<2 | $l2;
+    }
+
+
+    my $logical_sector = sectors_phy2log->[$sector];
+    my $all_zeros = 1;
+    map { $all_zeros = 0 if $_ != 0 } @bytes;
+
+    ++$sector_count;
+    ++$track_sector_count;
+
+    debug sprintf('==>S[$%x]:', $logical_sector);
+    if ($all_zeros) {
+      debug " empty\n";
+      next sector;
+    }
+    debug "\n";
+
+    my $bytes = pack('C*', @bytes);
+
+    $out_fh->seek(($track * SECTORS_PER_TRACK + $logical_sector)
+                  * BYTES_PER_SECTOR,
+                  SEEK_SET)
+      || die "$out_file: $!\n";
+    $out_fh->write($bytes, BYTES_PER_SECTOR);
+    ++$out_sector_count;
+  }
+
+  warn "T[$t_hex]: no sectors found\n"
+    unless $track_sector_count;
+}
+
+$out_fh->close || die "$out_file: $!\n";
+
+warn "$in_file: no sectors found!\n"
+  unless $sector_count;
+
+print "written $out_sector_count/$sector_count sectors\n";
+
+
+#end
