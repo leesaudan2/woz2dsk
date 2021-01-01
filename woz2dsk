@@ -38,8 +38,10 @@ my $address_prologue = "\xD5\xAA\x96";
 my $data_prologue = "\xD5\xAA\xAD";
 
 # see: http://www.applelogic.org/TheAppleIIEGettingStarted.html
-use constant sectors_phy2log => [map {hex} split(//, "07E6D5C4B3A2918F")];
-
+use constant SECTORS_PHY2LOG => {
+  DOS =>    [map {hex} split(//, "07E6D5C4B3A2918F")],
+  ProDOS => [map {hex} split(//, "08192A3B4C5D6E7F")],
+};
 
 use constant WOZ_BLOCK_SIZE => 512;
 
@@ -49,7 +51,9 @@ my ($opt, $usage) = describe_options
   q{%c %o <some-arg>
 
 Options:},
-  [ 'quiet|q',    "suppress normal messages" ],
+  [ 'format|f=s', "output format {auto|DOS|ProDOS}", { default  => 'auto' } ],
+  [],
+  [ 'quiet|q',    "suppress output messages" ],
   [ 'debug|d',    "show debug messages" ],
   [ 'help|h',     "print usage message and exit", { shortcircuit => 1 } ],
  );
@@ -71,6 +75,18 @@ sub debug {
   return unless $opt->debug;
   print STDERR @_
 }
+
+my $format = $opt->format;
+if ($format eq 'auto') {
+  my ($ext) = $out_file =~ m{\.([^.])[^.]*$};
+  $format = (defined($ext) && lc($ext) eq 'p')? 'ProDOS' : 'DOS';
+  print "using $format-ordered logical sectors for output\n"
+    unless $opt->quiet;
+}
+
+my $sectors_phy2log = SECTORS_PHY2LOG->{$format};
+die "unknown format: $format\n"
+  unless defined $sectors_phy2log;
 
 
 my $woz_buffer = slurp($in_file);
@@ -303,7 +319,7 @@ track: for my $track (0..(TRACKS_PER_DISK-1)) {
     }
 
 
-    my $logical_sector = sectors_phy2log->[$sector];
+    my $logical_sector = $sectors_phy2log->[$sector];
     my $all_zeros = 1;
     map { $all_zeros = 0 if $_ != 0 } @bytes;
 
