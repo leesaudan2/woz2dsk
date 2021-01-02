@@ -112,8 +112,11 @@ if ($format eq 'auto') {
     $format = 'DOS';
   }
 
-  print "using $format-ordered logical sectors for output\n"
-    unless $opt->quiet;
+  my $description = $format eq 'nibble'? "nibble format" :
+    "$format-ordered logical sectors";
+
+  print "using $description for output\n"
+      unless $opt->quiet;
 }
 
 my $sectors_phy2log = SECTORS_PHY2LOG->{$format};
