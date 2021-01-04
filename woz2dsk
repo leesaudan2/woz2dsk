@@ -295,21 +295,13 @@ track: for my $track (0..(TRACKS_PER_DISK-1)) {
       if $nr_sectors == 13 && $format ne 'nibble';
   }
 
-  my $nibbles;
-  { # convert bits to "nibbles"
-    my @trk = split(//, $trk);
-    my @nibbles;
-    for(;;) {
-      while (@trk && $trk[0]=='0') {
-        shift @trk; # skip leading '0's
-      }
-
-      last unless @trk >= 8;
-      my @bits = splice(@trk, 0, 8);
-      push @nibbles, pack("B8", join('', @bits));
-    }
-    $nibbles = join('', @nibbles);
+  # convert bits to nibbles
+  my $nibbles = '';
+  for (;;) {
+    last unless $trk =~ s{^0*(1.{7})}{}o;
+    $nibbles .= $1;
   }
+  $nibbles = pack("B*", $nibbles);
 
 
   if ($format eq 'nibble') {
