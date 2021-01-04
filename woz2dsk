@@ -259,8 +259,19 @@ unless ($format eq 'nibble') {
 
 track: for my $track (0..(TRACKS_PER_DISK-1)) {
   my $t_hex = sprintf('$%02x', $track);
-  my $trk = $trks[$tmap[$track]];
 
+  my $trks_index = $tmap[$track];
+  if ($trks_index == 0xFF) { # empty track
+    debug "T[$t_hex]: empty track\n";
+    if ($format eq 'nibble') {
+      $out_fh->seek(NIBBLES_PER_TRACK, SEEK_CUR);
+    }
+    next track;
+  }
+
+  my $trk = $trks[$trks_index];
+  die "T[$t_hex]: bad TMAP value\n"
+    unless defined($trk);
   my $bit_count;
   if ($magic eq 'WOZ2') {
     my ($start_block, $block_count, $bc) = @$trk;
