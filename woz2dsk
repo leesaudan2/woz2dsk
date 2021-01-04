@@ -260,23 +260,39 @@ track: for my $track (0..(TRACKS_PER_DISK-1)) {
     unless length($trk) >= $bit_count;
 
   { # synchronize
-    my $sync_8 = "1111111100" x 8;
-    my ($a, $b) = $trk =~ m{^(.*?$sync_8)(.*)$}; # looking for sync bytes...
+    use constant sync_bytes =>
+      {
+       16 => "1111111100" x 5, # for 16-sector tracks
+       13 => "111111110" x 8, # for 13-sector tracks
+      };
 
-    if (defined($a) && defined($b)) {
-      $trk = $b . $a; # rotate
-    } else { # maybe, it has been split when linearizing the circular track?
-      my $l = length($trk);
-      debug "rotate and retry by $l bits\n";
-      $trk = substr($trk, $l) . substr($trk, 0, $l);
-      my ($a2, $b2) = $trk =~ m{^(.*?$sync_8)(.*)$}; #try once more...
+    my $nr_sectors;
+  sync: for my $ns (16, 13) {
+      my $sync = sync_bytes->{$ns};
+      my ($a, $b) = $trk =~ m{^(.*?$sync)(.*)$}; # looking for sync bytes...
+      if (defined($a) && defined($b)) {
+        $trk = $b . $a; # rotate
+        $nr_sectors = $ns;
+        last sync;
+      }
 
+      # maybe, it has been split when linearizing the circular track?
+      my $s = length($sync);
+      debug "rotate and retry by $s bits\n";
+      $trk = substr($trk, length($trk)-$s) . substr($trk, 0, length($trk)-$s);
+      my ($a2, $b2) = $trk =~ m{^(.*?$sync)(.*)$}; #try once more...
       if (defined($a2) && defined($b2)) {
         $trk = $b2 . $a2; # rotate
-      } else {
-        die "$in_file: track $t_hex has no sync bytes\n";
+        $nr_sectors = $ns;
+        last sync;
       }
     }
+
+    die "$in_file: track $t_hex has no sync bytes\n"
+      unless defined $nr_sectors;
+
+    die "$in_file: uses 13-sector (DOS 3.2) format; please use --format=nibble\n"
+      if $nr_sectors == 13 && $format ne 'nibble';
   }
 
   my $nibbles;

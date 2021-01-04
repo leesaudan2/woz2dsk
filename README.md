@@ -25,8 +25,8 @@ Options:
 Convert an Apple II disk image from `.woz` format
 to one of `.dsk` (a.k.a. `.do`), `.po` or `.nib` format.
 Only images for 5.25" single-sided disks
-in the standard 16-sector format
-(i.e. 35 tracks * 16 sectors * 512 bytes)
+in the standard 16-sector or 13-sector formats
+(ProDOS, DOS 3.3, DOS 3.2)
 without copy protection
 are supported.
 
@@ -41,6 +41,21 @@ use disk images available only in `.woz` format.
 
 This program only accepts
 [WOZ version 2](https://applesaucefdc.com/woz/reference2/) image files.
+Images without copy protection and in the following standard formats
+are supported.
+
+* 16-sector format: used by DOS 3.3 and ProDOS.  
+  35 tracks * 16 sectors * 256 bytes = 140KB raw capacity
+
+* 13-sector format: used by DOS 3.2.  Must be used with `--format=nibble`.  
+  35 tracks * 13 sectors * 256 bytes = <114KB raw capacity
+
+Images for disks with non-standard formats and simplistic copy-protection
+techniques may work with `--format=nibble`.
+This would include disks that can be copied with nibble copiers.
+Disks employing advanced bit-based tricks involving precise timing
+would most likely **not** work, as the required information is not preserved
+in `--format=nibble` format.
 
 ### Output format ###
 If the output format is `auto` (default), then it is determined from
@@ -76,6 +91,7 @@ Otherwise the output format is `DOS`.
     woz2dsk 'DOS 3.3 System Master.woz' DOS_3.3_System_Master.nib
     woz2dsk 'The Apple at Play.woz' The_Apple_at_Play.po
     woz2dsk 'The Apple at Play.woz' The_Apple_at_Play.nib
+    woz2dsk 'DOS 3.2 System Master.woz' DOS_3.2_System_Master.nib
 
 These two `.woz` files come from
 [WOZ test images](http://evolutioninteractive.com/applesauce/woz_images.zip).
