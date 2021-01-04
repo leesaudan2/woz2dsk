@@ -40,7 +40,9 @@ use disk images available only in `.woz` format.
 ### Input format ###
 
 This program only accepts
-[WOZ version 2](https://applesaucefdc.com/woz/reference2/) image files.
+[WOZ](https://applesaucefdc.com/woz/) image files,
+both [version 2](https://applesaucefdc.com/woz/reference2/)
+and [version 1](https://applesaucefdc.com/woz/reference1/).
 Images without copy protection and in the following standard formats
 are supported.
 

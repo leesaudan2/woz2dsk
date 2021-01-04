@@ -133,7 +133,7 @@ my ($magic, $fixed, $crc32) =
 $woz_unpack_pos += 12;
 
 die "$in_file: WOZ2 header not found\n"
-  unless $magic eq "WOZ2";
+  unless $magic =~  m{^WOZ[12]$};
 die "$in_file: bad header\n"
   unless $fixed eq "\xFF\x0A\x0D\x0A";
 
@@ -194,12 +194,27 @@ while ($woz_unpack_pos < $woz_size) {
 
     when ('TRKS') {
       debug "TRKS: $chunk_size bytes\n";
-      @trks = unpack("(a8)160", $chunk_data);
-      map { $_ = [ unpack("S< S< L<", $_) ] } @trks;
+      if ($magic eq 'WOZ2') {
+        @trks = unpack("(a8)160", $chunk_data);
+        map { $_ = [ unpack("S< S< L<", $_) ] } @trks;
 
-      debug "  trks: ", join('/', map {
+        debug "  trks: ", join('/', map {
           join(",", @$_)
         } @trks), "\n";
+      } else {
+        die "bug!" unless $magic eq 'WOZ1';
+        while (length($chunk_data) >= 6656) {
+          my $bitstream = substr($chunk_data, 0, 6646);
+          my ($bytes_used, $bit_count) =
+            unpack("S< S<", substr($chunk_data, 6646, 4));
+          push @trks, [ $bytes_used, $bit_count, $bitstream];
+          $chunk_data = substr($chunk_data, 6656);
+        }
+
+        debug "  trks: ", join('/', map {
+          join(",", $_->[0], $_->[1])
+        } @trks), "\n";
+      }
     }
 
     when ('WRIT') {
@@ -245,16 +260,27 @@ unless ($format eq 'nibble') {
 track: for my $track (0..(TRACKS_PER_DISK-1)) {
   my $t_hex = sprintf('$%02x', $track);
   my $trk = $trks[$tmap[$track]];
-  my ($start_block, $block_count, $bit_count) = @$trk;
 
-  my $start = $start_block * WOZ_BLOCK_SIZE;
-  die "$in_file: start block offset ($start) of track $t_hex is beyond file size ($woz_size)\n"
-    unless $start < $woz_size;
-  my $length = $block_count * WOZ_BLOCK_SIZE;
-  die "$in_file: length ($length) of track $t_hex is extends beyond end of file\n"
-    unless $start + $length <= $woz_size;
+  my $bit_count;
+  if ($magic eq 'WOZ2') {
+    my ($start_block, $block_count, $bc) = @$trk;
+    $bit_count = $bc;
 
-  $trk = substr($woz_buffer, $start, $length);
+    my $start = $start_block * WOZ_BLOCK_SIZE;
+    die "$in_file: start block offset ($start) of track $t_hex is beyond file size ($woz_size)\n"
+      unless $start < $woz_size;
+    my $length = $block_count * WOZ_BLOCK_SIZE;
+    die "$in_file: length ($length) of track $t_hex is extends beyond end of file\n"
+      unless $start + $length <= $woz_size;
+
+    $trk = substr($woz_buffer, $start, $length);
+  } else {
+    die "bug!" unless $magic eq 'WOZ1';
+    my ($bytes_used, $bc, $bitstream) = @$trk;
+    $bit_count = $bc;
+    $trk = $bitstream;
+  }
+
   $trk = unpack("B$bit_count", $trk);
   die "$in_file: track $t_hex has fewer bits of data (" . length($trk) . ") than specified ($bit_count)\n"
     unless length($trk) >= $bit_count;
