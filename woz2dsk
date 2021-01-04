@@ -137,11 +137,12 @@ die "$in_file: WOZ2 header not found\n"
 die "$in_file: bad header\n"
   unless $fixed eq "\xFF\x0A\x0D\x0A";
 
-my $computed_crc32 = crc32(substr($woz_buffer, $woz_unpack_pos));
-die sprintf("$in_file: CRC mismatch (stored=%08x; computed=%08x)\n",
-            $crc32, $computed_crc32)
-unless $crc32 == $computed_crc32;
-
+if ($crc32 != 0) {
+  my $computed_crc32 = crc32(substr($woz_buffer, $woz_unpack_pos));
+  die sprintf("$in_file: CRC mismatch (stored=%08x; computed=%08x)\n",
+              $crc32, $computed_crc32)
+  unless $crc32 == $computed_crc32;
+}
 
 my $info;
 my @tmap;
