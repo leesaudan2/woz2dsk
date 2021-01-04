@@ -97,6 +97,22 @@ These two `.woz` files come from
 [WOZ test images](http://evolutioninteractive.com/applesauce/woz_images.zip).
 
 
+## Installation ##
+
+There is no need to install this program.
+Just download the `woz2dsk` file and run it with a
+Perl interpreter.
+
+### Pre-requisites ###
+
+A working [Perl](https://www.perl.org/) installation, at least version 5.14.
+The following [CPAN](https://www.cpan.org/) modules are needed.
+
+* [File::Slurp](https://metacpan.org/pod/File::Slurp) module
+* [Digest::CRC](https://metacpan.org/pod/Digest::CRC) module
+* [Getopt::Long::Descriptive](https://metacpan.org/pod/Getopt::Long::Descriptive) module
+
+
 ## GitHub ##
 
 <https://github.com/leesaudan2/woz2dsk>
