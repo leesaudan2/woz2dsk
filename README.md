@@ -82,7 +82,7 @@ Otherwise the output format is `DOS`.
 * `nibble`: This is usually associated with filename extension `.nib`.
   These files contain the raw nibbles in each track, one track after another.
   Each track has exactly 6656 (hex 1A00) bytes per track.
-  The total file size is 232960 (277.5 KB).
+  The total file size is 232960 (227.5 KB).
 
 [r1]: http://www.applelogic.org/TheAppleIIEGettingStarted.html
 

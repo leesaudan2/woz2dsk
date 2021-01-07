@@ -187,7 +187,7 @@ while ($woz_unpack_pos < $woz_size) {
         unless $chunk_size == 160;
 
       # we are only interested in integer-numbered tracks...
-      @tmap = unpack("C141", $chunk_data);
+      @tmap = unpack("C140", $chunk_data);
       @tmap = @tmap[map { 4*$_ } 0..(TRACKS_PER_DISK-1)];
 
       debug "TMAP: ", join(',', @tmap), "\n";
@@ -252,8 +252,11 @@ my $out_fh = IO::File->new($out_file, "w") || die "$out_file: $!\n";
 my $sector_count = 0;
 my $out_sector_count = 0;
 
-unless ($format eq 'nibble') {
-  $out_fh->truncate(TRACKS_PER_DISK * SECTORS_PER_TRACK * BYTES_PER_SECTOR)
+{
+  my $out_file_size = TRACKS_PER_DISK *
+    ($format eq 'nibble'? NIBBLES_PER_TRACK :
+     (SECTORS_PER_TRACK * BYTES_PER_SECTOR));
+  $out_fh->truncate($out_file_size)
     || die "$out_file: $!\n";
 }
 
