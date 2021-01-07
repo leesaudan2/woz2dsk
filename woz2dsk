@@ -31,7 +31,7 @@ use Digest::CRC qw(crc32);
 use Getopt::Long::Descriptive;
 
 use constant {
-              TRACKS_PER_DISK => 35,
+              STANDARD_TRACKS_PER_DISK => 35,
               SECTORS_PER_TRACK => 16,
               BYTES_PER_SECTOR => 256,
               NIBBLES_PER_TRACK => 6656,
@@ -74,6 +74,8 @@ my ($opt, $usage) = describe_options
 Options:},
   [ 'format|f=s', "output format {auto|DOS|ProDOS|nibble}",
                   { default  => 'auto' } ],
+  [ 'output-40-tracks',
+                  "output 40 tracks (instead of the standard of 35)" ],
   [],
   [ 'quiet|q',    "suppress output messages" ],
   [ 'debug|d',    "show debug messages" ],
@@ -122,6 +124,8 @@ if ($format eq 'auto') {
 my $sectors_phy2log = SECTORS_PHY2LOG->{$format};
 die "unknown format: $format\n"
   unless defined $sectors_phy2log || $format eq 'nibble';
+
+my $nr_tracks = $opt->output_40_tracks? 40 : STANDARD_TRACKS_PER_DISK;
 
 
 my $woz_buffer = slurp($in_file);
@@ -187,8 +191,8 @@ while ($woz_unpack_pos < $woz_size) {
         unless $chunk_size == 160;
 
       # we are only interested in integer-numbered tracks...
-      @tmap = unpack("C140", $chunk_data);
-      @tmap = @tmap[map { 4*$_ } 0..(TRACKS_PER_DISK-1)];
+      @tmap = unpack("C160", $chunk_data);
+      @tmap = @tmap[map { 4*$_ } 0..($nr_tracks-1)];
 
       debug "TMAP: ", join(',', @tmap), "\n";
     }
@@ -253,7 +257,7 @@ my $sector_count = 0;
 my $out_sector_count = 0;
 
 {
-  my $out_file_size = TRACKS_PER_DISK *
+  my $out_file_size = $nr_tracks *
     ($format eq 'nibble'? NIBBLES_PER_TRACK :
      (SECTORS_PER_TRACK * BYTES_PER_SECTOR));
   $out_fh->truncate($out_file_size)
@@ -261,7 +265,8 @@ my $out_sector_count = 0;
 }
 
 
-track: for my $track (0..(TRACKS_PER_DISK-1)) {
+my $nr_empty_nonstandard_tracks = 0;
+track: for my $track (0..($nr_tracks-1)) {
   my $t_hex = sprintf('$%02x', $track);
 
   my $trks_index = $tmap[$track];
@@ -270,6 +275,7 @@ track: for my $track (0..(TRACKS_PER_DISK-1)) {
     if ($format eq 'nibble') {
       $out_fh->seek(NIBBLES_PER_TRACK, SEEK_CUR);
     }
+    ++$nr_empty_nonstandard_tracks if $track > STANDARD_TRACKS_PER_DISK;
     next track;
   }
 
@@ -458,6 +464,10 @@ $out_fh->close || die "$out_file: $!\n";
 unless ($format eq 'nibble') {
   warn "$in_file: no sectors found!\n"
     unless $sector_count;
+
+  warn "$in_file: tracks > \$22 are empty; maybe, you didn't need --output_40_tracks?\n"
+    unless STANDARD_TRACKS_PER_DISK + $nr_empty_nonstandard_tracks
+        == $nr_tracks;
 
   print "written $out_sector_count/$sector_count sectors\n"
     unless $opt->quiet;

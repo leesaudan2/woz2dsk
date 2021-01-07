@@ -12,6 +12,8 @@ Options:
 
 * `-f STR`, `--format STR`:
   output format: one of `auto`, `DOS`, `ProDOS`, `nibble`
+* `--output-40-tracks`:
+  output 40 tracks (instead of the standard of 35)
 * `-q`, `--quiet`:
   suppress output messages
 * `-d`, `--debug`:
@@ -47,10 +49,12 @@ Images without copy protection and in the following standard formats
 are supported.
 
 * 16-sector format: used by DOS 3.3 and ProDOS.  
-  35 tracks * 16 sectors * 256 bytes = 140KB raw capacity
+  35 tracks * 16 sectors * 256 bytes = 140KB raw capacity  
+  (with `--output-40-tracks`: 40 tracks, 160KB)
 
 * 13-sector format: used by DOS 3.2.  Must be used with `--format=nibble`.  
-  35 tracks * 13 sectors * 256 bytes = <114KB raw capacity
+  35 tracks * 13 sectors * 256 bytes = <114KB raw capacity  
+  (with `--output-40-tracks`: 40 tracks, 130KB)
 
 Images for disks with non-standard formats and simplistic copy-protection
 techniques may work with `--format=nibble`.
@@ -65,6 +69,9 @@ the extension of the output file.
 If the extension begins with `p`, then the output format is `ProDOS`.
 If the extension begins with `nib`, then the output format is `nibble`.
 Otherwise the output format is `DOS`.
+Output images contain 35 tracks of data, which is the standard.
+However, if `--output-40-tracks` is specified, 40 tracks are written out.
+These 40-track images may be incompatible with some emulators or utilities.
 
 * `DOS`: This format is very common and is usually found in image files
   with the extensions `.dsk` and `.do`.
@@ -72,7 +79,9 @@ Otherwise the output format is `DOS`.
   track after track.
   Within each track, sectors are ordered by logical sector numbers,
   mapped to physical sector numbers in the DOS 3.3 way.[[1]][r1]
-  These images have a fixed size of 144360 bytes (= 140KB).
+  These images have a fixed size of 144360 bytes (= 140 KB).
+  With `--output-40-tracks`: 40 track images are generated,
+  with a size of 163840 bytes (= 160 KB)
 
 * `ProDOS`: This format is usually found in files with the `.po` extension.
   It is like the `DOS` format in most aspects, except that the
@@ -82,7 +91,9 @@ Otherwise the output format is `DOS`.
 * `nibble`: This is usually associated with filename extension `.nib`.
   These files contain the raw nibbles in each track, one track after another.
   Each track has exactly 6656 (hex 1A00) bytes per track.
-  The total file size is 232960 (227.5 KB).
+  The total file size is 232960 bytes (= 227.5 KB).
+  With `--output-40-tracks`: 40 track images are generated,
+  with a size of 266240 bytes (= 260 KB)
 
 [r1]: http://www.applelogic.org/TheAppleIIEGettingStarted.html
 
