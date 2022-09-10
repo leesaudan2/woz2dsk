@@ -6,7 +6,7 @@ files.  These formats are widely used by Apple II emulators.
 
 ## Synopsis ##
 
-    woz2disk [options...] in.woz out.dsk
+    woz2dsk [options...] in.woz out.dsk
 
 Options:
 
@@ -61,11 +61,11 @@ techniques may work with `--format=nibble`.
 This would include disks that can be copied with nibble copiers.
 Disks employing advanced bit-based tricks involving precise timing
 would most likely **not** work, as the required information is not preserved
-in `--format=nibble` format.
+in the `--format=nibble` format.
 
 ### Output format ###
 If the output format is `auto` (default), then it is determined from
-the extension of the output file.
+the extension of the output file name.
 If the extension begins with `p`, then the output format is `ProDOS`.
 If the extension begins with `nib`, then the output format is `nibble`.
 Otherwise the output format is `DOS`.
@@ -106,7 +106,7 @@ These 40-track images may be incompatible with some emulators or utilities.
     woz2dsk 'The Apple at Play.woz' The_Apple_at_Play.nib
     woz2dsk 'DOS 3.2 System Master.woz' DOS_3.2_System_Master.nib
 
-These two `.woz` files come from
+These `.woz` files come from
 [WOZ test images](http://evolutioninteractive.com/applesauce/woz_images.zip).
 
 
@@ -133,7 +133,7 @@ The following [CPAN](https://www.cpan.org/) modules are needed.
 
 ## Copyright ##
 
-Copyright (C) 2021 LEE Sau Dan <<leesaudan@gmail.com>>
+Copyright (C) 2021--2022 LEE Sau Dan <<leesaudan@gmail.com>>
 
 
 *woz2dsk* is free software: you can redistribute it and/or modify
