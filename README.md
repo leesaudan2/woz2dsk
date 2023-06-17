@@ -133,7 +133,7 @@ The following [CPAN](https://www.cpan.org/) modules are needed.
 
 ## Copyright ##
 
-Copyright (C) 2021--2022 LEE Sau Dan <<leesaudan@gmail.com>>
+Copyright (C) 2021--2023 LEE Sau Dan <<leesaudan@gmail.com>>
 
 
 *woz2dsk* is free software: you can redistribute it and/or modify
